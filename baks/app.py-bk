@@ -1,0 +1,130 @@
+from flask import Flask, request, jsonify, render_template
+import mysql.connector
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import atexit
+import os
+from rq import Queue
+from worker import conn
+import tasks  # Import the tasks module
+import pytz
+from datetime import datetime
+
+# Set the time zone environment variable
+os.environ['TZ'] = 'Asia/Calcutta'
+
+app = Flask(__name__)
+
+# MySQL database configuration
+DB_CONFIG = {
+    'user': 'slack_user',
+    'password': 'T33th123!',
+    'host': 'localhost',
+    'database': 'slack_ignore_db'
+}
+
+# Initialize Redis Queue
+q = Queue(connection=conn)
+
+def init_db():
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS ignore_list (
+                        instance_id VARCHAR(255) UNIQUE,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS permanent_ignore_list (
+                        instance_id VARCHAR(255) UNIQUE)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS running_instances (
+                        instance_id VARCHAR(255) PRIMARY KEY,
+                        launch_time DATETIME,
+                        running_time_hours FLOAT,
+                        region VARCHAR(255))''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS long_running_instances (
+                        instance_id VARCHAR(255) PRIMARY KEY,
+                        launch_time DATETIME,
+                        running_time_hours FLOAT,
+                        region VARCHAR(255))''')
+    conn.commit()
+    conn.close()
+
+@app.route('/')
+def index():
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    cursor.execute('SELECT instance_id, launch_time, running_time_hours, region FROM running_instances')
+    instances = cursor.fetchall()
+    cursor.execute('SELECT instance_id, launch_time, running_time_hours, region FROM long_running_instances')
+    long_running_instances = cursor.fetchall()
+    conn.close()
+    return render_template('index.html', instances=instances, long_running_instances=long_running_instances)
+
+@app.route('/ignore_instance', methods=['POST'])
+def ignore_instance():
+    data = request.form
+    text = data.get('text', '').strip()
+    response_text = "Unknown command. Use 'add <instance_id>' to add to temporary ignore list, 'remove <instance_id>' to remove from temporary ignore list, 'add_permanent <instance_id>' to add to permanent ignore list, 'remove_permanent <instance_id>' to remove from permanent ignore list, or 'stop <instance_id>' to stop an instance."
+
+    if text.startswith("add_permanent"):
+        instance_id = text.split()[1]
+        tasks.add_to_permanent_ignore_list(instance_id)
+        response_text = f"Instance ID {instance_id} added to permanent ignore list."
+    elif text.startswith("remove_permanent"):
+        instance_id = text.split()[1]
+        tasks.remove_from_permanent_ignore_list(instance_id)
+        response_text = f"Instance ID {instance_id} removed from permanent ignore list."
+    elif text.startswith("add"):
+        instance_id = text.split()[1]
+        tasks.add_to_ignore_list(instance_id)
+        response_text = f"Instance ID {instance_id} added to ignore list."
+    elif text.startswith("remove"):
+        instance_id = text.split()[1]
+        tasks.remove_from_ignore_list(instance_id)
+        response_text = f"Instance ID {instance_id} removed from ignore list."
+    elif text.startswith("stop"):
+        instance_id = text.split()[1]
+        job = q.enqueue(tasks.stop_instance, instance_id)
+        response_text = f"Instance ID {instance_id} is being stopped. Check status with job ID {job.id}."
+
+    return jsonify({'text': response_text})
+
+@app.route('/stop_instance', methods=['POST'])
+def stop_instance():
+    instance_id = request.form['instance_id']
+    job = q.enqueue(tasks.stop_instance, instance_id)
+    return jsonify({'message': f"Instance ID {instance_id} is being stopped. Job ID: {job.id}"}), 202
+
+@app.route('/check_instances', methods=['POST'])
+def check_instances():
+    job = q.enqueue(tasks.fetch_ec2_instances)
+    return jsonify({'message': f"Instance check started. Job ID: {job.id}"}), 202
+
+# New route to manually trigger the EC2 instance check and Slack notification
+@app.route('/trigger_instance_check', methods=['POST'])
+def trigger_instance_check():
+    job = q.enqueue(tasks.fetch_ec2_instances)
+    return jsonify({'message': f"Manual instance check triggered. Job ID: {job.id}"}), 202
+
+# Scheduler setup
+scheduler = BackgroundScheduler()
+
+# Convert the desired time (3 PM IST) to UTC
+ist = pytz.timezone('Asia/Calcutta')
+ist_time = datetime.now(ist).replace(hour=15, minute=0, second=0, microsecond=0)
+utc_time = ist_time.astimezone(pytz.utc)
+
+# Schedule the job to run at 3 PM IST daily
+scheduler.add_job(func=lambda: q.enqueue(tasks.fetch_ec2_instances), 
+                  trigger=CronTrigger(hour=utc_time.hour, minute=utc_time.minute, timezone=pytz.utc))
+
+# Existing daily cleanup job
+scheduler.add_job(func=tasks.cleanup_old_entries, trigger="interval", days=1)
+
+scheduler.start()
+
+# Shut down the scheduler when exiting the app
+atexit.register(lambda: scheduler.shutdown())
+
+if __name__ == '__main__':
+    init_db()
+    app.run(host='0.0.0.0', port=5000)
+

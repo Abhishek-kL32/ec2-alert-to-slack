@@ -1,0 +1,51 @@
+from flask import Flask, jsonify, request, render_template
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
+from tasks import fetch_ec2_instances, add_to_ignore_list, remove_from_ignore_list
+
+app = Flask(__name__)
+
+# Route for the home page
+@app.route('/')
+def index():
+    return jsonify({"message": "Welcome to the EC2 Monitoring App!"})
+
+# Route to manually trigger the EC2 instance check
+@app.route('/check_instances', methods=['POST'])
+def check_instances():
+    fetch_ec2_instances()
+    return jsonify({"message": "EC2 instance check triggered."})
+
+# Route to add an instance to the ignore list
+@app.route('/ignore_instance', methods=['POST'])
+def ignore_instance():
+    data = request.json
+    instance_id = data.get('instance_id')
+    if not instance_id:
+        return jsonify({"error": "Instance ID is required"}), 400
+
+    add_to_ignore_list(instance_id)
+    return jsonify({"message": f"Instance {instance_id} added to ignore list."})
+
+# Route to remove an instance from the ignore list
+@app.route('/unignore_instance', methods=['POST'])
+def unignore_instance():
+    data = request.json
+    instance_id = data.get('instance_id')
+    if not instance_id:
+        return jsonify({"error": "Instance ID is required"}), 400
+
+    remove_from_ignore_list(instance_id)
+    return jsonify({"message": f"Instance {instance_id} removed from ignore list."})
+
+# Scheduler setup
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=fetch_ec2_instances, trigger="interval", minutes=15)
+scheduler.start()
+
+# Ensure the scheduler shuts down on app exit
+atexit.register(lambda: scheduler.shutdown())
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+

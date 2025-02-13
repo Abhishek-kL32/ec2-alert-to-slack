@@ -1,0 +1,264 @@
+import mysql.connector
+import boto3
+import json
+import requests
+from datetime import datetime, timedelta
+
+# MySQL database configuration
+DB_CONFIG = {
+    'user': 'slack_user',
+    'password': 'T33th123!',
+    'host': 'localhost',
+    'database': 'slack_ignore_db'
+}
+
+# Slack webhook URL
+slack_webhook_url = "https://hooks.slack.com/services/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"
+
+# Mapping of email addresses to Slack user IDs
+email_to_slack_id = {
+    "abhishek.krishna@epiuse.com": "U071QJKRA4X",
+    "abin.joseph@epiuse.com": "U02HCMCSNQG",
+    "adarsh.k@epiuse.com": "U01GZNA6VGQ",
+    "adhilekshmi.ps@epiuse.com": "U058X419M2Q",
+    "Angel.Varghese@epiuse.com": "U0702BVUCR2",
+    "anoop.rajeev@epiuse.com": "U02MAG5AF3M",
+    "anusree.o@epiuse.com": "U02G8B6KT5M",
+    "arjun.dev@epiuse.com": "UB1TNSUP5",
+    "catherine.anto@epiuse.com": "U04DAGVNX0T",
+    "denny.antony@epiuse.com": "U06H9E7EQ2Y",
+    "devika.sreenivasan@epiuse.com": "U06HKL33PCH",
+    "julious.gonsalves@epiuse.com": "U040144G2N4",
+    "kavya.k@epiuse.com": "U05QLF24ZHQ",
+    "megha.chithran@epiuse.com": "U02HCMCMFKJ",
+    "nandu.krishnan@epiuse.com": "U04DAGW7GLT",
+    "sajni.v@epiuse.com": "U071J0S9G15",
+    "saradha.seenivasan@epiuse.com": "U06HVPVUG0Y",
+    "sherry.john@epiuse.com": "U04MR9CL2JK",
+    "shine.kumar@epiuse.com": "U01FE9NJGQP",
+    "shyam.prakash@epiuse.com": "U01GA3LAHC3",
+    "sourav.k@epiuse.com": "U06GSDYQG4F",
+    "Sreelakshmi.Km@epiuse.com": "U04D7MKMU85",
+    "suraj.krishnan@epiuse.com": "U04E0B751CY",
+    "visakh.kk@epiuse.com": "U01RX8N2KAL",
+    "visakh.us@epiuse.com": "U01G0GUQMLY",
+    "vishnu.cp@epiuse.com": "U058RLQB493",
+    "surya.krishna@epiuse.com": "U01N2BTD78F"
+}
+
+def add_to_ignore_list(instance_id):
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO ignore_list (instance_id) VALUES (%s) ON DUPLICATE KEY UPDATE timestamp = CURRENT_TIMESTAMP', (instance_id,))
+    conn.commit()
+    conn.close()
+
+def remove_from_ignore_list(instance_id):
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM ignore_list WHERE instance_id = %s', (instance_id,))
+    conn.commit()
+    conn.close()
+
+def add_to_permanent_ignore_list(instance_id):
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    cursor.execute('INSERT IGNORE INTO permanent_ignore_list (instance_id) VALUES (%s)', (instance_id,))
+    conn.commit()
+    conn.close()
+
+def remove_from_permanent_ignore_list(instance_id):
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM permanent_ignore_list WHERE instance_id = %s', (instance_id,))
+    conn.commit()
+    conn.close()
+
+def fetch_ignore_list():
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    cursor.execute('SELECT instance_id FROM ignore_list')
+    ignore_list = [row[0] for row in cursor.fetchall()]
+    cursor.execute('SELECT instance_id FROM permanent_ignore_list')
+    permanent_ignore_list = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return ignore_list, permanent_ignore_list
+
+def cleanup_old_entries():
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM ignore_list WHERE timestamp < NOW() - INTERVAL 5 DAY')
+    conn.commit()
+    conn.close()
+
+def stop_instance(instance_id):
+    try:
+        print(f"Attempting to stop instance {instance_id}")
+
+        ec2_client = boto3.client('ec2')
+        regions = [region['RegionName'] for region in ec2_client.describe_regions()['Regions']]
+
+        found = False
+        for region in regions:
+            try:
+                ec2_client = boto3.client('ec2', region_name=region)
+                response = ec2_client.describe_instances(InstanceIds=[instance_id])
+                reservations = response['Reservations']
+                if reservations:
+                    region = reservations[0]['Instances'][0]['Placement']['AvailabilityZone'][:-1]
+                    print(f"Instance {instance_id} is in region {region}")
+                    found = True
+                    break
+            except Exception as e:
+                print(f"Error checking region {region}: {str(e)}")
+
+        if not found:
+            raise ValueError(f"No running instance found with ID {instance_id} in any region")
+
+        ec2_client = boto3.client('ec2', region_name=region)
+        stop_response = ec2_client.stop_instances(InstanceIds=[instance_id])
+        print(f"Stop response: {stop_response}")
+
+        return {
+            'statusCode': 200,
+            'body': json.dumps(f"Instance {instance_id} in region {region} is stopping.")
+        }
+
+    except Exception as e:
+        print(f"Error stopping instance {instance_id}: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps(f"Error stopping instance {instance_id}: {str(e)}")
+        }
+
+    except Exception as e:
+        print(f"Error stopping instance {instance_id}: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps(f"Error stopping instance {instance_id}: {str(e)}")
+        }
+
+def fetch_ec2_instances():
+    ignore_list, permanent_ignore_list = fetch_ignore_list()
+    combined_ignore_list = set(ignore_list + permanent_ignore_list)
+    try:
+        # Get all regions
+        ec2_client = boto3.client('ec2')
+        regions = [region['RegionName'] for region in ec2_client.describe_regions()['Regions']]
+        print(f"Regions: {regions}")
+        
+        long_running_instances = []
+        all_events = []
+
+        for region in regions:
+            print(f"Processing region: {region}")
+            ec2 = boto3.client('ec2', region_name=region)
+            response = ec2.describe_instances(Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
+            print(f"Found {len(response['Reservations'])} running instances in region {region}")
+            
+            for reservation in response['Reservations']:
+                for instance in reservation['Instances']:
+                    instance_id = instance['InstanceId']
+                    launch_time = instance['LaunchTime']
+                    current_time = datetime.utcnow()
+                    running_time = current_time - launch_time.replace(tzinfo=None)
+                    
+                    if running_time > timedelta(hours=8):
+                        if instance_id in combined_ignore_list:
+                            print(f"Instance {instance_id} is in the ignore list. Skipping notification.")
+                            continue
+
+                        # Initialize cloudtrail client for the current region
+                        cloudtrail_client = boto3.client('cloudtrail', region_name=region)
+                        
+                        # Try to get the RunInstances event within 5-minute bandwidth
+                        start_time = launch_time - timedelta(minutes=5)
+                        end_time = launch_time + timedelta(minutes=5)
+                        events_response = cloudtrail_client.lookup_events(
+                            LookupAttributes=[
+                                {'AttributeKey': 'EventName', 'AttributeValue': 'RunInstances'},
+                                {'AttributeKey': 'ResourceName', 'AttributeValue': instance_id}
+                            ],
+                            StartTime=start_time,
+                            EndTime=end_time,
+                            MaxResults=50
+                        )
+
+                        principal_id = None
+                        email_id = None
+
+                        # If RunInstances event is not found, try StartInstances event
+                        if not events_response['Events']:
+                            events_response = cloudtrail_client.lookup_events(
+                                LookupAttributes=[
+                                    {'AttributeKey': 'EventName', 'AttributeValue': 'StartInstances'},
+                                    {'AttributeKey': 'ResourceName', 'AttributeValue': instance_id}
+                                ],
+                                StartTime=start_time,
+                                EndTime=end_time,
+                                MaxResults=50
+                            )
+
+                        # Collect all events for later analysis if needed
+                        all_events.extend(events_response['Events'])
+
+                        # Process the event to extract the principal ID
+                        for event in events_response['Events']:
+                            event_data = json.loads(event['CloudTrailEvent'])
+                            principal_id = event_data.get('userIdentity', {}).get('principalId', 'Unknown')
+                            email_id = principal_id.split(':')[-1]
+                            
+                            # Debug logging
+                            print(f"Instance ID: {instance_id}, Principal ID: {principal_id}, Email ID: {email_id}")
+                            
+                            # Get instance tags
+                            tags_response = ec2.describe_tags(Filters=[{'Name': 'resource-id', 'Values': [instance_id]}])
+                            tags = {tag['Key']: tag['Value'] for tag in tags_response.get('Tags', [])}
+                            
+                            instance_info = {
+                                'InstanceId': instance_id,
+                                'Region': region,
+                                'LaunchTime': launch_time.strftime("%Y-%m-%d %H:%M:%S"),
+                                'RunningTimeHours': running_time.total_seconds() / 3600,
+                                'PrincipalId': email_id,
+                                'Tags': tags
+                            }
+                            long_running_instances.append(instance_info)
+                            
+                            # Send Slack notification
+                            slack_user_id = email_to_slack_id.get(email_id)
+                            if slack_user_id:
+                                mention = f"<@{slack_user_id}>"
+                            else:
+                                mention = "<!channel>"  # Notify channel if Slack ID not found
+                                
+                            body = (
+                                f"{mention}\n"
+                                f"The EC2 instance {instance_id} in region {region} has been running for "
+                                f"{running_time.total_seconds() / 3600:.2f} hours.\n"
+                                f"Tags: {tags}\n\n"
+                                "If this instance is not in use, please stop or terminate it if it is no longer required."
+                            )
+                            send_slack_notification(body)
+
+        # Save all events to a file for further analysis
+        with open('cloudtrail_events.json', 'w') as f:
+            json.dump(all_events, f, indent=4)
+                                    
+        print("Notifications sent for long-running instances.")
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+
+def send_slack_notification(body):
+    try:
+        payload = {
+            "text": body
+        }
+        response = requests.post(slack_webhook_url, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
+        if response.status_code != 200:
+            raise ValueError(f"Request to Slack returned an error {response.status_code}, the response is: {response.text}")
+        print("Slack notification sent successfully")
+    except Exception as e:
+        print(f"Error sending Slack notification: {str(e)}")
+

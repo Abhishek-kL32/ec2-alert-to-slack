@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instance Monitoring Dashboard</title>
+</head>
+<body>
+    <h1>EC2 Instance Monitoring Dashboard</h1>
+    <p>List of Running Instances:</p>
+    <ul>
+        {% for instance in instances %}
+            <li>ID: {{ instance[0] }} - Launch Time: {{ instance[1] }} - Hours Running: {{ ((datetime.utcnow() - instance[1]).total_seconds() / 3600) | round(2) }} - Region: {{ instance[3] }}</li>
+        {% endfor %}
+    </ul>
+    <p>Long-Running Instances:</p>
+    <ul>
+        {% for instance in long_running_instances %}
+            <li>ID: {{ instance[0] }} - Launch Time: {{ instance[1] }} - Hours Running: {{ ((datetime.utcnow() - instance[1]).total_seconds() / 3600) | round(2) }} - Region: {{ instance[3] }}</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
+

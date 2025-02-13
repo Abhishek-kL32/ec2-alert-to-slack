@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Running EC2 Instances</title>
+    <style>
+        body {
+            background-color: #1c1c1c;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            color: #ddd;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-image: url('{{ url_for('static', filename='anime-background.jpg') }}');
+            background-size: cover;
+            background-attachment: fixed;
+        }
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 15px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            text-align: center;
+        }
+        .header {
+            margin-bottom: 20px;
+        }
+        .header-logo {
+            width: 150px;
+            margin-bottom: 10px;
+        }
+        .header-title {
+            font-size: 30px;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        th {
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+        }
+        td {
+            color: #ddd;
+        }
+        tr:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .stop-button {
+            color: #fff;
+            background-color: #dc3545;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        .stop-button:hover {
+            background-color: #c82333;
+        }
+        .footer {
+            text-align: center;
+            padding: 10px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 0 0 15px 15px;
+            box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="header-logo">
+            <div class="header-title">All Running EC2 Instances</div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Instance ID</th>
+                    <th>Launch Time</th>
+                    <th>Running Time (hours)</th>
+                    <th>Region</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for instance in instances %}
+                <tr>
+                    <td>{{ instance[0] }}</td>
+                    <td>{{ instance[1] }}</td>
+                    <td>{{ ((datetime.utcnow() - instance[1]).total_seconds() / 3600) | round(2) }}</td>
+                    <td>{{ instance[3] }}</td>
+                    <td>
+                        <form action="/stop_instance" method="post">
+                            <input type="hidden" name="instance_id" value="{{ instance[0] }}">
+                            <button type="submit" class="stop-button">Stop</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="footer">
+        &copy; 2024 Your Company. All rights reserved.
+    </div>
+</body>
+</html>
+

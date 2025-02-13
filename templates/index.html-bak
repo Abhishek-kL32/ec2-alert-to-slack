@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Running EC2 Instances</title>
+    <style>
+        body {
+            background-color: #f4f4f9;
+            font-family: Arial, sans-serif;
+            color: #333;
+        }
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        h1 {
+            text-align: center;
+            color: #007bff;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #007bff;
+            color: #fff;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        .stop-button {
+            color: #fff;
+            background-color: #dc3545;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .stop-button:hover {
+            background-color: #c82333;
+        }
+        .header-logo {
+            width: 50px;
+            margin-right: 10px;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .footer {
+            text-align: center;
+            padding: 10px;
+            background-color: #007bff;
+            color: #fff;
+            border-radius: 0 0 8px 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="header-logo">
+            <h1>All Running EC2 Instances</h1>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Instance ID</th>
+                    <th>Launch Time</th>
+                    <th>Running Time (hours)</th>
+                    <th>Region</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for instance in instances %}
+                <tr>
+                    <td>{{ instance[0] }}</td>
+                    <td>{{ instance[1] }}</td>
+                    <td>{{ ((datetime.utcnow() - instance[1]).total_seconds() / 3600) | round(2) }}</td>
+                    <td>{{ instance[3] }}</td>
+                    <td>
+                        <form action="/stop_instance" method="post">
+                            <input type="hidden" name="instance_id" value="{{ instance[0] }}">
+                            <button type="submit" class="stop-button">Stop</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="footer">
+        &copy; 2024 Your Company. All rights reserved.
+    </div>
+</body>
+</html>
+
