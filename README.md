@@ -6,12 +6,11 @@ install pm2 as per OS
 cd /path/to/files
 python3 -m pip install -r requirements.txt
 
-#######################################
-need to configure aws before start  
-#######################################
+
+#need to configure aws or attach before start  
 
 To start app run 
-#################
+-----------------
 
  pm2 start app.py --name slack-API-sanbox --interpreter=python3
  pm2 start worker.py --name worker --interpreter=python3
